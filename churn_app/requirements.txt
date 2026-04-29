@@ -1,9 +1,0 @@
-pandas
-numpy
-streamlit
-scikit-learn
-xgboost
-lightgbm
-imbalanced-learn
-shap
-fpdf2

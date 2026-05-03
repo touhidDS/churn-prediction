@@ -22,7 +22,6 @@ streamlit run app.py
 |------|-------------|
 | 📁 Upload & Configure | Upload data, pick target column, run pipeline |
 | 📊 Overview | KPI cards, churn rate, plain English summary |
-| 🏆 Model Results | Compare 5 models, ROC curves, confusion matrix |
 | 🔍 XAI Explanations | SHAP global importance + beeswarm (Expert Mode) |
 | 👤 Customer Lookup | Per-customer churn probability + SHAP waterfall |
 | 📥 Download Report | One-click PDF report generation |

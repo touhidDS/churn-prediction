@@ -3,7 +3,7 @@
 A Streamlit dashboard for batch customer churn prediction with Explainable AI (SHAP) and PDF report export.
 
 ## Features
-- Upload CSV, XLSX, JSON, or SQL files
+- Upload CSV, XLSX or SQL files
 - Auto-detects churn column
 - Full ML pipeline: preprocessing → encoding → SMOTE → 5 models → SHAP
 - Simple Mode / Expert Mode toggle

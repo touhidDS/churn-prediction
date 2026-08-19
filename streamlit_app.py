@@ -14,7 +14,7 @@ warnings.filterwarnings('ignore')
 
 from datetime import datetime
 
-# ── ML ──────────────────────────────────────────────────────────────────────
+# ML
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
@@ -27,7 +27,7 @@ from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 import shap
 
-# ── PDF ─────────────────────────────────────────────────────────────────────
+# PDF
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
                                  TableStyle, PageBreak, HRFlowable, Image as RLImage)
@@ -35,9 +35,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import inch
 
-# ════════════════════════════════════════════════════════════════════════════
-# PAGE CONFIG
-# ════════════════════════════════════════════════════════════════════════════
+# Page setup
 st.set_page_config(
     page_title="Churn Prediction · XAI Dashboard",
     page_icon="📊",
@@ -45,9 +43,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ════════════════════════════════════════════════════════════════════════════
-# PROFESSIONAL CSS
-# ════════════════════════════════════════════════════════════════════════════
+# Custom styling
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -242,9 +238,7 @@ div[data-testid="stRadio"] label[data-baseweb="radio"]:hover { background: #1e27
 </style>
 """, unsafe_allow_html=True)
 
-# ════════════════════════════════════════════════════════════════════════════
-# SESSION STATE INIT
-# ════════════════════════════════════════════════════════════════════════════
+# Session state defaults
 for key in ['df_raw','df_encoded','results_df','models','best_model_name','sql_table_loaded',
             'best_model','X_test_final','y_test_final','selected_feature_names',
             'X_train_resampled','y_train_resampled','shap_values','shap_exp_2d','pipeline_done',
@@ -255,9 +249,7 @@ for key in ['df_raw','df_encoded','results_df','models','best_model_name','sql_t
 if st.session_state['pipeline_done'] is None:
     st.session_state['pipeline_done'] = False
 
-# ════════════════════════════════════════════════════════════════════════════
-# HELPER FUNCTIONS
-# ════════════════════════════════════════════════════════════════════════════
+# Helper functions
 
 def clean_sql_for_sqlite(sql):
     sql = sql.replace('`', '"')
@@ -277,7 +269,6 @@ def clean_sql_for_sqlite(sql):
     sql = re.sub(r'/\*.*?\*/', '', sql, flags=re.DOTALL)
     return sql
 
-
 def load_uploaded_file(uploaded_file):
     """Load CSV, XLSX, or SQL — no JSON."""
     ext = os.path.splitext(uploaded_file.name)[1].lower()
@@ -295,23 +286,21 @@ def load_uploaded_file(uploaded_file):
         conn.commit()
         tables = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table'", conn)['name'].tolist()
         if tables:
-            # Return conn + tables so the UI can let the user pick which table to use
-            # Do NOT load any table yet — the upload page handles table selection
+            # Don't load a table yet — the upload page lets the user pick one
             return None, conn, tables
     return None, None, []
 
-
 def detect_churn_column(df):
-    """Auto-detect churn column — mirrors notebook Cell 9 logic exactly.
+    """Auto-detect churn column
     Lowercases columns first, then searches keywords in priority order (substring match).
     """
-    # Priority order matches notebook: specific churn terms first, generic ones last
+    # Priority order
     churn_keywords = [
         'churned', 'churn',
         'attrition', 'exited', 'left',
         'target', 'label', 'status', 'outcome'
     ]
-    # lowercase all column names for matching (same as notebook)
+    # lowercase all column names for matching
     lower_cols = [col.lower() for col in df.columns]
     for kw in churn_keywords:
         matched = [col for col in lower_cols if kw in col]
@@ -321,23 +310,22 @@ def detect_churn_column(df):
             return df.columns[idx]
     return df.columns[0]  # fallback to first column
 
-
 def run_pipeline(df, target_column):
     df = df.copy()
 
-    # ── Lowercase all columns (Step 2 change from notebook) ─────────────────
+    # Lowercase all columns before matching keywords
     df.columns = [col.lower() for col in df.columns]
     target_column = target_column.lower()
 
-    # ── Numeric coercion (matches notebook Step 3: smart_convert_to_numeric) ────
-    # Only converts columns whose names match known numeric keywords (same as notebook).
+    # Numeric coercion
+    # Only converts columns whose names match known numeric keywords.
     # Strips currency symbols, commas, % signs, -, unit suffixes before converting.
     def _aggressive_clean(series):
         cleaned = (series.astype(str)
             .str.replace(r'[\$€£¥₹₽₩¢]', '', regex=True)
             .str.replace(r'%', '', regex=True)
             .str.replace(r',', '', regex=True)
-            .str.replace(r'-', '', regex=True)           # notebook strips dash before [^0-9.]
+            .str.replace(r'-', '', regex=True)
             .str.replace(r'\b(GB|MB|KB|TB|kg|km|cm|mm|lb|oz|USD|EUR|CAD)\b', '', regex=True, flags=re.IGNORECASE)
             .str.replace(r'\s+', '', regex=True)
             .str.replace(r'[(){}[\]]', '', regex=True)
@@ -346,7 +334,7 @@ def run_pipeline(df, target_column):
         cleaned = cleaned.replace(['', 'nan', 'None', 'null', 'NULL'], np.nan)
         return cleaned
 
-    # Matches notebook get_numeric_column_patterns() exactly
+    #
     _NUMERIC_PATTERNS = {
         'revenue','income','salary','wage','profit','loss','balance',
         'amount','price','cost','fee','charge','payment','debt','debit',
@@ -397,23 +385,23 @@ def run_pipeline(df, target_column):
             success_rate = (converted[original_non_null].notna().sum() /
                             original_non_null.sum()) if original_non_null.sum() > 0 else 0
             if success_rate > 0.1:
-                # Mirror notebook: use Int64 if all non-null values are whole numbers
+                # use Int64 if all non-null values are whole numbers
                 non_null = converted.dropna()
                 if len(non_null) > 0 and (non_null % 1 == 0).all():
                     df[col] = converted.astype('Int64')
                 else:
                     df[col] = converted
 
-    # ── Date columns → Years (matches notebook Step 4: convert_dates_to_years) ─
+    # Date columns → Years
     date_keywords = ['dob','birth','date','created','signup','registered',
                      'joined','start','opened']
-    # ✅ FIX 4: Use fixed reference date — ensures reproducible results every run (matches notebook)
+    # Use fixed reference date — ensures reproducible results every run
     current_date = datetime(2025, 4, 4)
     for col in list(df.columns):
         if col == target_column:
             continue
         col_lower = col.lower().strip()
-        # Mirror notebook: skip 'founded' if an age/year column already exists for this entity
+        # skip 'founded' if an age/year column already exists for this entity
         if 'founded' in col_lower and any(
             'age' in c.lower() or ('company' in c.lower() and 'year' in c.lower())
             for c in df.columns
@@ -433,8 +421,8 @@ def run_pipeline(df, target_column):
             except Exception:
                 pass
 
-    # ── Missing values (matches notebook Step 5: simple_missing_handler EXACTLY) ─
-    # Order matches notebook: drop high-missing cols first, THEN drop target rows, then fill
+    # Missing values
+    # Order
     columns_to_drop = [col for col in df.columns
                        if col != target_column and df[col].isnull().sum() / len(df) > 0.50]
     if columns_to_drop:
@@ -448,12 +436,12 @@ def run_pipeline(df, target_column):
             continue
         if df[col].isnull().sum() == 0:
             continue
-        # pd.api.types.is_numeric_dtype covers int64, float64, Int64, etc. — matches notebook
+        # pd.api.types.is_numeric_dtype covers int64, float64, Int64, etc.
         if pd.api.types.is_numeric_dtype(df[col]):
             missing_pct = df[col].isnull().sum() / len(df)
             median_val = df[col].median()
             df[col] = df[col].fillna(median_val)
-            # FIX 5: Warn (via console) when imputing columns with >30% missing values
+            # Warn (via console) when imputing columns with >30% missing values
             if missing_pct > 0.30:
                 import warnings as _w
                 _w.warn(f"Heavy imputation: '{col}' has {missing_pct:.1%} missing — filled with median")
@@ -466,16 +454,16 @@ def run_pipeline(df, target_column):
                 import warnings as _w
                 _w.warn(f"Heavy imputation: '{col}' has {missing_pct:.1%} missing — filled with mode")
 
-    # ── Encoding ─────────────────────────────────────────────────────────────
+    # Encoding
     cat_cols = df.select_dtypes(include='object').columns.tolist()
     if target_column in cat_cols:
         cat_cols.remove(target_column)
 
-    dropped_high_card = []   # FIX 6: track dropped high-cardinality columns
+    dropped_high_card = []   # track dropped high-cardinality columns
     for col in cat_cols:
         n = df[col].nunique()
         if n <= 2:
-            # FIX 6: Always use LabelEncoder for binary — handles any label pair
+            # Always use LabelEncoder for binary — handles any label pair
             le = LabelEncoder(); df[col] = le.fit_transform(df[col].astype(str))
         elif n <= 10:
             dummies = pd.get_dummies(df[col], prefix=col, drop_first=True).astype(int)
@@ -490,7 +478,7 @@ def run_pipeline(df, target_column):
     le_target = LabelEncoder()
     df[target_column] = le_target.fit_transform(df[target_column].astype(str)).astype(int)
 
-    # ── Split ────────────────────────────────────────────────────────────────
+    # Split
     X = df.drop(columns=[target_column])
     y = df[target_column]
     X = X.apply(lambda c: c.astype(int) if c.dtype == bool else c)
@@ -501,28 +489,28 @@ def run_pipeline(df, target_column):
     y_train = y_train.astype(int)
     y_test  = y_test.astype(int)
 
-    # ── Feature Engineering (matches notebook Step 8) ──────────────────────
+    # Feature Engineering
     # Must happen BEFORE scaling so engineered features are scaled too
     df_fe_train = X_train.copy()
     df_fe_test  = X_test.copy()
     numeric_cols = df_fe_train.columns.tolist()
 
-    # Debt-to-Revenue ratio (snake_case to match notebook)
+    # Debt-to-Revenue ratio (snake_case for consistency)
     revenue_cols = [c for c in numeric_cols if any(w in c for w in ['revenue','income','sales','earning'])]
     debt_cols    = [c for c in numeric_cols if any(w in c for w in ['debt','debit','loan','liability','payment'])]
     if revenue_cols and debt_cols:
         df_fe_train['debt_revenue_ratio'] = df_fe_train[debt_cols[0]] / (df_fe_train[revenue_cols[0]] + 0.0001)
         df_fe_test['debt_revenue_ratio']  = df_fe_test[debt_cols[0]]  / (df_fe_test[revenue_cols[0]]  + 0.0001)
 
-    # Percentage-based binary features (snake_case to match notebook)
+    # Percentage-based binary features (snake_case for consistency)
     pct_cols = [c for c in numeric_cols if 'percent' in c or 'ownership' in c]
     for col in pct_cols:
         threshold = df_fe_train[col].median()
-        new_col = f'{col}_high'    # ✅ snake_case matches notebook
+        new_col = f'{col}_high'    # ✅ snake_case
         df_fe_train[new_col] = (df_fe_train[col] > threshold).astype(int)
         df_fe_test[new_col]  = (df_fe_test[col]  > threshold).astype(int)
 
-    # FIX 7: Interaction feature — top-2 columns by correlation with target
+    # Interaction feature — top-2 columns by correlation with target
     if len(numeric_cols) >= 2:
         try:
             target_corr = df_fe_train.join(y_train).corr()[y_train.name].drop(y_train.name).abs()
@@ -533,13 +521,13 @@ def run_pipeline(df, target_column):
         except Exception:
             pass
 
-    # ── Scale (fit on TRAIN only — matches notebook) ──────────────────────────
+    # Scale (fit on TRAIN only
     scaler = StandardScaler()
     scaler.fit(df_fe_train)
     X_train_sc = pd.DataFrame(scaler.transform(df_fe_train), columns=df_fe_train.columns, index=df_fe_train.index)
     X_test_sc  = pd.DataFrame(scaler.transform(df_fe_test),  columns=df_fe_test.columns,  index=df_fe_test.index)
 
-    # ── Corr removal ─────────────────────────────────────────────────────────
+    # Corr removal
     y_train_float = y_train.astype(float)
     corr = X_train_sc.corr().abs()
     to_drop = set()
@@ -553,7 +541,7 @@ def run_pipeline(df, target_column):
     X_train_sc.drop(columns=list(to_drop), inplace=True, errors='ignore')
     X_test_sc.drop(columns=list(to_drop),  inplace=True, errors='ignore')
 
-    # ── Feature selection (max_depth=10 matches notebook) ────────────────────
+    # Feature selection (max_depth=10
     rf_sel = RandomForestClassifier(n_estimators=100, random_state=42,
                                      class_weight='balanced', max_depth=10, n_jobs=-1)
     rf_sel.fit(X_train_sc, y_train)
@@ -564,13 +552,13 @@ def run_pipeline(df, target_column):
     X_train_sel = X_train_sc[selected]
     X_test_sel  = X_test_sc[selected]
 
-    # ── SMOTE ────────────────────────────────────────────────────────────────
-    k_safe = min(5, int((y_train==1).sum()) - 1)   # explicit int — matches notebook safety guard
+    # SMOTE
+    k_safe = min(5, int((y_train==1).sum()) - 1)   # explicit int
     smote = SMOTE(random_state=42, k_neighbors=k_safe)
     X_tr_res, y_tr_res = smote.fit_resample(X_train_sel, y_train)
     X_tr_res = pd.DataFrame(X_tr_res, columns=selected)
 
-    # ── Train models (hyperparams match notebook exactly) ────────────────────
+    # Train candidate models
     models = {
         'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42,
                                                     class_weight='balanced', solver='lbfgs'),
@@ -598,19 +586,18 @@ def run_pipeline(df, target_column):
     best_name  = results_df.iloc[0]['Model']
     best_model = models[best_name]
 
-    # ── SHAP ─────────────────────────────────────────────────────────────────
-    # ✅ FIX: use modern explainer() API (matches fixed notebook) — single call,
-    #         consistent base values, correct 3-D handling for all model types
+    # SHAP explanations for the winning model. TreeExplainer is much faster
+    # for tree-based models; fall back to LinearExplainer for logistic regression.
     try:
         if hasattr(best_model, 'feature_importances_'):
             explainer = shap.TreeExplainer(best_model)
         else:
             explainer = shap.LinearExplainer(best_model, X_tr_res)
 
-        # ✅ FIX: call explainer() ONCE for the full test set — reuse for all plots
+        # call explainer() ONCE for the full test set — reuse for all plots
         shap_exp_all = explainer(X_test_sel)
 
-        # ✅ FIX: normalise to 2-D (n_samples, n_features) immediately
+        # normalise to 2-D (n_samples, n_features) immediately
         # New SHAP returns 3-D (n_samples, n_features, n_classes) for multi-output models
         # Old SHAP returns a list; take index [1] for the churn class
         sv = shap_exp_all.values
@@ -620,7 +607,7 @@ def run_pipeline(df, target_column):
             sv = sv[:, :, 1]          # new SHAP 3-D → take class-1 slice
         shap_values_2d = sv           # always 2-D: (n_samples, n_features)
 
-        # ✅ FIX: Rebuild a clean Explanation object with 2-D values so all SHAP plots work
+        # Rebuild a clean Explanation object with 2-D values so all SHAP plots work
         shap_exp_2d = shap.Explanation(
             values      = shap_values_2d,
             base_values = (shap_exp_all.base_values[:, 1]
@@ -630,7 +617,9 @@ def run_pipeline(df, target_column):
             feature_names = selected
         )
         shap_values = shap_values_2d
-    except Exception as e:
+    except Exception:
+        # Some model/data combos aren't SHAP-compatible — degrade gracefully,
+        # the UI just hides the explainability sections if this stays None.
         shap_values = None
         shap_exp_2d = None
 
@@ -649,7 +638,6 @@ def run_pipeline(df, target_column):
         'shap_exp_2d': shap_exp_2d,
     }
 
-
 def make_gauge(prob, size=200):
     fig, ax = plt.subplots(figsize=(size/80, size/80), subplot_kw=dict(polar=True))
     fig.patch.set_facecolor('#0d1117')
@@ -666,14 +654,12 @@ def make_gauge(prob, size=200):
     plt.tight_layout(pad=0)
     return fig
 
-
 def fig_to_png(fig):
     buf = io.BytesIO()
     fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
     plt.close(fig)
     buf.seek(0)
     return buf
-
 
 def generate_pdf_report(results_df, best_model_name, best_model,
                          X_test_final, y_test_final, shap_values,
@@ -687,7 +673,7 @@ def generate_pdf_report(results_df, best_model_name, best_model,
     story   = []
     W_FULL  = 6.5*inch
 
-    # ── Palette ──────────────────────────────────────────────────────────────
+    # Palette
     C_BLUE   = colors.HexColor('#2563eb')
     C_DARK   = colors.HexColor('#1e293b')
     C_LIGHT  = colors.HexColor('#f1f5f9')
@@ -700,7 +686,7 @@ def generate_pdf_report(results_df, best_model_name, best_model,
     C_ROW1   = colors.HexColor('#f8fafc')
     C_WHITE  = colors.white
 
-    # ── Paragraph style factory ───────────────────────────────────────────────
+    # Paragraph style factory
     def PS(name, **kw):
         return ParagraphStyle(name, parent=styles['Normal'], **kw)
 
@@ -714,7 +700,7 @@ def generate_pdf_report(results_df, best_model_name, best_model,
     caption_st  = PS('CP', fontSize=8,  leading=11, textColor=C_GREY, alignment=1, spaceAfter=4)
     footer_st   = PS('FT', fontSize=8,  textColor=C_GREY, leading=11)
 
-    # ── Computed values ───────────────────────────────────────────────────────
+    # Computed values
     now        = datetime.now().strftime("%B %d, %Y")
     best_row   = results_df.iloc[0]
     y_pred     = best_model.predict(X_test_final)
@@ -763,7 +749,7 @@ def generate_pdf_report(results_df, best_model_name, best_model,
     top5_scores   = top_scores[:5]
     feat_lower    = ' '.join(f.lower() for f in top_features)
 
-    # ── Helper builders ───────────────────────────────────────────────────────
+    # Helper builders
     def hline(col=C_BORDER, t=1, before=4, after=6):
         return HRFlowable(width="100%", thickness=t, color=col,
                           spaceBefore=before, spaceAfter=after)
@@ -924,9 +910,7 @@ def generate_pdf_report(results_df, best_model_name, best_model,
                       "Customers with unusual values in this area are at significantly higher risk. ")
         return f"Ranked #{rank} — {rank_phrase}. {detail}<b>{tip}</b>"
 
-    # ════════════════════════════════════════════════════════════════════════
     # PAGE 1 — COVER
-    # ════════════════════════════════════════════════════════════════════════
     story += [
         Spacer(1, 0.5*inch),
         Paragraph("ChurnIQ", PS('BN', fontSize=13, fontName='Helvetica-Bold',
@@ -1011,9 +995,7 @@ def generate_pdf_report(results_df, best_model_name, best_model,
     ]))
     story += [toc_tbl, PageBreak()]
 
-    # ════════════════════════════════════════════════════════════════════════
     # PAGE 2 — EXECUTIVE SUMMARY
-    # ════════════════════════════════════════════════════════════════════════
     story += [
         section_header("1", "Executive Summary"),
         Spacer(1, 0.08*inch),
@@ -1071,9 +1053,7 @@ def generate_pdf_report(results_df, best_model_name, best_model,
         PageBreak(),
     ]
 
-    # ════════════════════════════════════════════════════════════════════════
     # PAGE 3 — RISK ASSESSMENT (SHAP)
-    # ════════════════════════════════════════════════════════════════════════
     story += [
         section_header("2", "Risk Assessment \u2014 Why Are Customers Leaving?"),
         Spacer(1, 0.08*inch),
@@ -1135,9 +1115,7 @@ def generate_pdf_report(results_df, best_model_name, best_model,
 
     story.append(PageBreak())
 
-    # ════════════════════════════════════════════════════════════════════════
     # PAGE 4 — ACTION PLAN
-    # ════════════════════════════════════════════════════════════════════════
     story += [
         section_header("3", "How to Reduce Churn \u2014 Action Plan"),
         Spacer(1, 0.08*inch),
@@ -1245,9 +1223,7 @@ def generate_pdf_report(results_df, best_model_name, best_model,
     ]))
     story += [ns_tbl, PageBreak()]
 
-    # ════════════════════════════════════════════════════════════════════════
     # PAGE 5 — BEST MODEL PERFORMANCE (no comparison table)
-    # ════════════════════════════════════════════════════════════════════════
     story += [
         section_header("4", "Best Model Performance"),
         Spacer(1, 0.08*inch),
@@ -1349,9 +1325,7 @@ def generate_pdf_report(results_df, best_model_name, best_model,
 
     story.append(PageBreak())
 
-    # ════════════════════════════════════════════════════════════════════════
     # PAGE 6 — QUICK REFERENCE SUMMARY
-    # ════════════════════════════════════════════════════════════════════════
     story += [
         section_header("5", "Quick Reference Summary"),
         Spacer(1, 0.1*inch),
@@ -1416,10 +1390,7 @@ def generate_pdf_report(results_df, best_model_name, best_model,
     buf.seek(0)
     return buf.read()
 
-
-# ════════════════════════════════════════════════════════════════════════════
-# SIDEBAR
-# ════════════════════════════════════════════════════════════════════════════
+# Sidebar navigation
 with st.sidebar:
     st.markdown("""
     <div class="sidebar-brand">
@@ -1450,10 +1421,7 @@ with st.sidebar:
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown('<p style="color:#475569;font-size:0.8rem;">Upload a dataset and run the pipeline to begin.</p>', unsafe_allow_html=True)
 
-
-# ════════════════════════════════════════════════════════════════════════════
-# PAGE 1 — UPLOAD & CONFIGURE
-# ════════════════════════════════════════════════════════════════════════════
+# Page: upload & configure
 if page == "📁  Upload & Configure":
     st.markdown("""
     <div class="page-header">
@@ -1480,7 +1448,7 @@ if page == "📁  Upload & Configure":
         with st.spinner("Reading file..."):
             raw_df, conn, tables = load_uploaded_file(uploaded)
 
-        # ── SQL multi-table picker ───────────────────────────────────────────
+        # SQL multi-table picker
         if conn is not None and tables:
             if len(tables) == 1:
                 # Only one table — load it silently
@@ -1546,10 +1514,10 @@ if page == "📁  Upload & Configure":
         with st.expander("👁️ Data Preview", expanded=False):
             st.dataframe(df.head(12), use_container_width=True)
 
-        # ── Target column selection ──────────────────────────────────────────
+        # Target column selection
         st.markdown('<div class="section-title">🎯 Select Target (Churn) Column</div>', unsafe_allow_html=True)
 
-        # Lowercase columns first (same as notebook) then detect
+        # Lowercase columns first then detect
         lower_cols    = [col.lower() for col in df.columns]
         detected_col  = detect_churn_column(df)          # returns original-case col name
         detected_lower = detected_col.lower()
@@ -1561,7 +1529,7 @@ if page == "📁  Upload & Configure":
             default_idx   = 0
             was_detected  = False
 
-        # Show auto-detect feedback (mirrors notebook print output)
+        # Show auto-detect feedback
         if was_detected:
             st.markdown(f"""
             <div class="insight-card green" style="margin-bottom:10px;">
@@ -1631,10 +1599,7 @@ if page == "📁  Upload & Configure":
                     st.error(f"❌ Pipeline error: {e}")
                     import traceback; st.code(traceback.format_exc())
 
-
-# ════════════════════════════════════════════════════════════════════════════
-# PAGE 2 — OVERVIEW
-# ════════════════════════════════════════════════════════════════════════════
+# Page: overview
 elif page == "📊  Overview":
     if not st.session_state['pipeline_done']:
         st.warning("⚠️ Please upload data and run the pipeline first.")
@@ -1747,12 +1712,8 @@ elif page == "📊  Overview":
         plt.tight_layout()
         st.pyplot(fig, use_container_width=True); plt.close()
 
-    # Model leaderboard removed per user request
 
-
-# ════════════════════════════════════════════════════════════════════════════
-# PAGE 3 — XAI EXPLANATIONS
-# ════════════════════════════════════════════════════════════════════════════
+# Page: XAI explanations
 elif page == "🔍  XAI Explanations":
     if not st.session_state['pipeline_done']:
         st.warning("⚠️ Please upload data and run the pipeline first.")
@@ -1813,7 +1774,7 @@ elif page == "🔍  XAI Explanations":
     plt.tight_layout()
     st.pyplot(fig, use_container_width=True); plt.close()
 
-    # ── FIX: SHAP Beeswarm / dot plot (matches notebook Step 13) ──────────────
+    # FIX: SHAP Beeswarm / dot plot
     shap_exp_2d = st.session_state.get('shap_exp_2d')
     if shap_exp_2d is not None:
         st.markdown('<div class="section-title">🐝 SHAP Beeswarm — Impact on Churn</div>', unsafe_allow_html=True)
@@ -1839,10 +1800,7 @@ elif page == "🔍  XAI Explanations":
             </span>
         </div>""", unsafe_allow_html=True)
 
-
-# ════════════════════════════════════════════════════════════════════════════
-# PAGE 4 — CUSTOMER LOOKUP
-# ════════════════════════════════════════════════════════════════════════════
+# Page: customer lookup
 elif page == "👤  Customer Lookup":
     if not st.session_state['pipeline_done']:
         st.warning("⚠️ Please upload data and run the pipeline first.")
@@ -1905,7 +1863,7 @@ elif page == "👤  Customer Lookup":
         cust_shap   = _sv2[row_pos]
         shap_series = pd.Series(cust_shap, index=features).sort_values(key=abs, ascending=False).head(8)
 
-        # ── FIX: Use shap_exp_2d waterfall (matches notebook Step 13) ──────────
+        # FIX: Use shap_exp_2d waterfall
         shap_exp_2d = st.session_state.get('shap_exp_2d')
         if shap_exp_2d is not None:
             try:
@@ -1972,10 +1930,7 @@ elif page == "👤  Customer Lookup":
     risk_df = risk_df.sort_values('Churn Probability', ascending=False)
     st.dataframe(risk_df, use_container_width=True, height=380, hide_index=True)
 
-
-# ════════════════════════════════════════════════════════════════════════════
-# PAGE 5 — DOWNLOAD REPORT
-# ════════════════════════════════════════════════════════════════════════════
+# Page: download report
 elif page == "📥  Download Report":
     if not st.session_state['pipeline_done']:
         st.warning("⚠️ Please upload data and run the pipeline first.")
